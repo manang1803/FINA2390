@@ -1,0 +1,172 @@
+from datetime import datetime as dt
+from requests import get
+from bs4 import BeautifulSoup as bs
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from selenium.webdriver import Chrome
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from sklearn.linear_model import LinearRegression
+from time import sleep
+
+df_cols = ['name', 'revenue', 'revenue % change', 'profit',  'asset', 'profit % change', 'employees', 'country']
+df = pd.DataFrame(columns=df_cols) #creates an empty dataframe with the above columns
+driver = Chrome('C:/Users/gupta/Downloads/chromedriver') #opens chrome
+url = "https://fortune.com/global500/2019/search/"
+driver.get(url)#opens the url
+sleep(5)
+"""
+the data is arranged in a table under rt-tbody
+use by.class_name to find all elements with the class name rt-tbody
+"""
+
+data = WebDriverWait(driver, 10).until(
+        EC.presence_of_all_elements_located((By.CLASS_NAME, "rt-tbody")) 
+    )
+#each individual company was under the class name rt-tr-group
+
+items = data[0].find_elements_by_class_name('rt-tr-group')[:100]
+#loops through each company
+for item in items: #every item is a company
+    temp = item.text.split('\n')[1:8]
+    temp.append(item.text.split('\n')[-1:][0])
+    df = df.append(dict(zip(df_cols,temp)), ignore_index=True)
+
+"""
+The code below is for converting the string numbers to float format so that they can be visaulised
+
+"""
+
+
+col_all = ['name', 'revenue', 'revenue % change', 'profit', 'asset',
+       'profit % change', 'employees', 'country']
+
+col = ['revenue', 'profit', 'asset']
+col_p = ['revenue % change', 'profit % change']
+
+dic = {el:[] for el in col_all}
+
+x = ','
+y = '%'
+
+for data in col:
+    for i in df[data]:
+        try:
+            if x in i:
+                temp = float(i.replace(',','')[1:])
+            #print(temp)
+                dic[data].append(temp)   
+            else:
+                temp = float(i[1:])
+                dic[data].append(temp)
+        except:
+            dic[data].append(np.nan)
+    df[data] = dic[data] 
+     
+for per in col_p:
+    for i in df[per]:
+        try: #used try to account for empty cells
+            temp = float(i[:-1])
+            dic[per].append(temp)
+        except:
+            dic[per].append(np.nan)
+            
+    df[per] = dic[per]
+    
+for emp in df.employees:
+    try:
+        if x in emp:
+            temp = int(emp.replace(',',''))
+            dic['employees'].append(temp)
+        else:
+            temp = int(emp)
+            dic['employees'].append(temp)
+    except:
+        dic['employees'].append(np.nan)
+    
+df.employees = dic['employees']
+
+#making database of only the top 10 for data visualisation
+df_data = df.head(10)
+
+#making the 2 bar graphs using matplotlib.pyplot
+fig, axes = plt.subplots(nrows = 2, ncols = 1, figsize = (15, 20))
+ax1, ax2 = fig.axes
+
+pos = np.arange(len(df_data["name"]))
+bar_w = 0.35
+
+ax1.bar(pos, df_data["revenue"],bar_w, color = "red", label = "Revenue")
+ax1.bar(pos+bar_w, df_data["profit"],bar_w, color = "blue", label = "Profit")
+ax1.set_xticks(pos+(bar_w/2))
+ax1.set_xticklabels(df_data["name"], fontsize = 15, rotation = 90)
+ax1.set_title("Revenue and Profit Comparision", fontsize = 20)
+
+ax2.bar(pos, df_data["revenue % change"],bar_w, color = "green", label = "Revenue % change")
+ax2.bar(pos+bar_w, df_data["profit % change"],bar_w, color = "cyan", label = "Profit % change")
+ax2.set_xticks(pos+(bar_w/2))
+ax2.set_xticklabels(df_data["name"], fontsize = 15, rotation = 90)
+ax2.set_title("Revenue and Profit change Comparision", fontsize = 20)
+
+ax1.legend()
+ax2.legend()
+plt.tight_layout()    
+plt.show()
+
+#print(df["revenue"])
+employ = []
+for i in df["employees"]:
+    employ.append(i)
+
+revenue = []
+for i in df["revenue"]:
+    revenue.append(i)
+    
+asset = []
+for i in df["asset"]:
+    asset.append(i)
+    
+employ1 = np.reshape(employ, (-1, 1))
+revenue1 = np.reshape(revenue,(-1,1))
+
+linear_regressor = LinearRegression()  # create object for the class
+linear_regressor.fit(employ1, revenue1)  # perform linear regression
+Y_pred = linear_regressor.predict(employ1)  # make predictions
+
+plt.figure(figsize=(10, 10))
+
+
+#making the plot
+plt.scatter(employ,revenue)
+plt.plot(employ1, Y_pred, color='red')
+plt.show()
+
+print('Coefficients: \n', linear_regressor.coef_)
+
+print('R^2 value: \n', linear_regressor.score(employ1,revenue1))
+
+
+asset1 = np.reshape(asset,(-1,1))
+
+linear_regressor1 = LinearRegression()  # create object for the class
+linear_regressor1.fit(asset1, revenue1)  # perform linear regression
+Y_pred1 = linear_regressor1.predict(asset1)  # make predictions
+
+
+plt.figure(figsize=(10, 10))
+
+plt.scatter(asset,revenue)
+plt.plot(asset1, Y_pred1, color='red')
+plt.show()
+
+# Print the coefficients
+print('Coefficients: \n', linear_regressor1.coef_)
+
+print('R^2 value: \n', linear_regressor1.score(asset1,revenue1))
+
+df.to_csv("Fortune500_1.csv", index = False)
+driver.quit()
+#b = dt.now()
+#print(b-a)
