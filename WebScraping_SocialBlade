@@ -1,0 +1,83 @@
+"""
+@author: gupta
+"""
+#importing relevant packages
+import numpy as np
+import pandas as pd
+from selenium.webdriver import Chrome
+from selenium.webdriver.support.ui import WebDriverWait as WDW
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from time import sleep
+
+driver = Chrome('C:/Users/gupta/Downloads/chromedriver')
+#list of countries needed 
+countries = ["us", "gb", "de","fr"]#can expand by simply adding 2 letter code for countries. Eg: 'in' for India, 'hk' for Hong Kong
+
+cols = ["Rank", "Grade", "Name", "Videos", "Subs", "Total Views", "Channel Type", "Date Created","Average Daily Views", "Last 30 Days Views"]
+for country in countries:
+    url = ("https://socialblade.com/youtube/top/country/{}/mostsubscribed")
+    driver.get(url.format(country))
+
+    dic = {x:[] for x in cols}
+    
+    xpath_1 = '''/html/body/div[11]/div[2]/div[{}]'''#xpath of Youtuber details
+
+    for i in range(5,105):#find top 100 youtubers in every country. Number can be changed based on how many Youtubers required 
+        try: #to close the ad popup if present
+            driver.find_element_by_xpath('''//*[@id="pa-unit-3"]/div[2]''').click()
+        except:
+            pass
+        finally:
+            """
+explicit waits are needed to make sure that the program waits until the element required has loaded
+this is to prevent errors such as NoSuchElement or ElementClickInterceptedException
+            """ 
+            
+            data = WDW(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH,xpath_1.format(i)))
+                    )
+
+            items = data.text.split('\n') #to split the various details into individual elements
+            
+            #appending to dictionary to convert to dataframe later
+            dic[cols[0]].append(int(items[0][:-2]))
+            for g in range(1,5):
+                dic[cols[g]].append(items[g])
+            dic["Total Views"].append(float(items[5].replace(',','')))
+            
+            WDW(driver,10).until(
+                    EC.element_to_be_clickable((By.LINK_TEXT, items[2]))
+                    )
+            
+            driver.find_element_by_link_text(items[2]).click()#clicking the channel details
+            try:
+                #explicit wait until element is found
+                daily_views = WDW(driver,10).until(
+                        EC.presence_of_element_located((By.XPATH, '''//*[@id="averagedailyviews"]/span'''))
+                        )
+                channel_type = WDW(driver,10).until(
+                        EC.presence_of_element_located((By.XPATH, '''//*[@id="youtube-user-page-channeltype"]'''))
+                        )            
+                date = driver.find_element_by_xpath('''//*[@id="YouTubeUserTopInfoBlock"]/div[7]/span[2]''')
+                month_views = driver.find_element_by_xpath('''//*[@id="socialblade-user-content"]/div[24]/div[3]/span''')
+                dic["Average Daily Views"].append(float(daily_views.text.replace(',','')))
+                dic["Channel Type"].append(channel_type.text)
+                dic["Date Created"].append(date.text)
+                dic["Last 30 Days Views"].append(float(month_views.text.replace(',','')))
+            except:#this is if any of the channels do not have the above information present
+                dic["Average Daily Views"].append(np.nan)
+                dic["Channel Type"].append(np.nan)
+                dic["Date Created"].append(np.nan)
+                dic["Last 30 Days Views"].append(np.nan)
+                
+            driver.get(url.format(country)) #to get it back to the main page
+            print(items[2])
+            sleep(1)
+    #making a dataframe of every country and exporting to csv        
+    df = pd.DataFrame(dic)
+    df.to_csv("socialblade_{}.csv".format(country), index = False)
+
+driver.quit()
+
+
